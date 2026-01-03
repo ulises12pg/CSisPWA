@@ -2,27 +2,18 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Sistema Punto de Venta para Ciber Café">
-    <meta name="theme-color" content="#0f172a">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="CronoPOS">
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CronoSysPOS v2.1</title>
     
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="./manifest.json">
-    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2830/2830305.png">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2830/2830305.png">
-
     <!-- 1. Estilos (Tailwind CSS) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- 2. Configuración de Iconos y Librerías -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Librería para escanear con cámara (QR/Barras) -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- Librería para Tablas en PDF (AutoTable) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
     <!-- 3. React y Babel -->
@@ -31,18 +22,11 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        /* Optimizaciones PWA */
-        body { 
-            user-select: none; 
-            overscroll-behavior-y: none; /* Prevenir pull-to-refresh en movil */
-            -webkit-tap-highlight-color: transparent;
-        } 
-        
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
+        body { user-select: none; } 
         .barcode-scan { animation: scanLine 2s infinite linear; }
         @keyframes scanLine { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
         
@@ -65,27 +49,25 @@
         .alarm-active { animation: alarmFlash 1s infinite; }
     </style>
 </head>
-<body class="bg-slate-300 h-screen overflow-hidden">
-    <div id="root" class="h-full overflow-y-auto custom-scrollbar"></div>
-
-    <!-- PWA Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(registration => {
-                        console.log('CronoSysPOS PWA: ServiceWorker registrado con éxito: ', registration.scope);
-                    })
-                    .catch(err => {
-                        console.log('CronoSysPOS PWA: Fallo al registrar ServiceWorker: ', err);
-                    });
-            });
-        }
-    </script>
+<!-- FONDO GRIS PLATEADO OSCURO -->
+<body class="bg-slate-300">
+    <div id="root"></div>
 
     <!-- 4. TU CÓDIGO DEL SISTEMA -->
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
+        
+        // --- CONSTANTES ---
+// Utilizamos window para almacenar variables globales solo si no existen aún, evitando redeclaración
+window.EMPRESA = window.EMPRESA || "CIBER CENTRO PROGRESO";
+window.RFC = window.RFC || "PEGU911012KC3";
+window.REGIMEN = window.REGIMEN || "Régimen Simplificado de Confianza";
+window.DIRECCION = window.DIRECCION || "Plaza Principal 6, Progreso C.P. 42987";
+window.LUGAR_EXPEDICION = window.LUGAR_EXPEDICION || "Progreso, Hidalgo";
+        // Utilizamos window para almacenar variables globales solo si no existen aún, evitando redeclaración
+        window.SISTEMA = window.SISTEMA || "v2.2";
+        window.COLOR_CORP = window.COLOR_CORP || "bg-slate-900";
+        window.RATIO_PUNTOS = window.RATIO_PUNTOS || 10;
         
         // --- SONIDOS DEL SISTEMA ---
         const playSound = (type) => {
@@ -168,7 +150,7 @@
         const { Monitor, Gamepad2, Play, Pause, Square, Coffee, X, ShoppingBag, Users, Ticket, PlusCircle, CheckCircle, Package, Trash2, Edit2, Settings, Ban, Lock, LogOut, Truck, ScanBarcode, UserCog, Shield, Sparkles, Bot, Send, Clock, Timer, Bell, Trophy, ArrowRightLeft, Key, Save, Printer, FileText, Bluetooth, Camera, CameraOff, QrCode, Droplet, ChevronRight, CircleDollarSign, RotateCcw, Store, Wifi, HandHelping, UserPlus, Database, Download, Upload, AlertTriangle, Wallet } = Icons;
 
         // --- CONSTANTES ---
-        const EMPRESA = "CronoSystemPOS";
+        const EMPRESA = "Ciber Centro Progreso";
         const SISTEMA = "v2.1";
         const COLOR_CORP = "bg-slate-900"; 
         const RATIO_PUNTOS = 10; // $1 peso = 10 puntos
@@ -551,6 +533,45 @@
             };
             const eliminarProductoInventario = (id) => { if(confirm("¿Eliminar?")) setCatalogo(prev => prev.filter(p => p.id !== id)); };
             const prepararEdicionProducto = (prod) => setItemForm(prod);
+            
+			// --- HELPER: NUMERO A LETRAS ---
+        const numeroALetras = (amount) => {
+            const Unidades = num => ["", "UN ", "DOS ", "TRES ", "CUATRO ", "CINCO ", "SEIS ", "SIETE ", "OCHO ", "NUEVE "][num];
+            const Decenas = num => {
+                const dec = Math.floor(num / 10);
+                const uni = num - (dec * 10);
+                switch (dec) {
+                    case 1: return uni < 6 ? ["DIEZ ", "ONCE ", "DOCE ", "TRECE ", "CATORCE ", "QUINCE "][uni] : "DIECI" + Unidades(uni);
+                    case 2: return uni === 0 ? "VEINTE " : "VEINTI" + Unidades(uni);
+                    case 3: return Unidades(uni) ? "TREINTA Y " + Unidades(uni) : "TREINTA ";
+                    case 4: return Unidades(uni) ? "CUARENTA Y " + Unidades(uni) : "CUARENTA ";
+                    case 5: return Unidades(uni) ? "CINCUENTA Y " + Unidades(uni) : "CINCUENTA ";
+                    case 6: return Unidades(uni) ? "SESENTA Y " + Unidades(uni) : "SESENTA ";
+                    case 7: return Unidades(uni) ? "SETENTA Y " + Unidades(uni) : "SETENTA ";
+                    case 8: return Unidades(uni) ? "OCHENTA Y " + Unidades(uni) : "OCHENTA ";
+                    case 9: return Unidades(uni) ? "NOVENTA Y " + Unidades(uni) : "NOVENTA ";
+                    case 0: return Unidades(uni);
+                }
+            };
+            const Centenas = num => {
+                const cen = Math.floor(num / 100);
+                const resto = num - (cen * 100);
+                if (cen === 1) return resto > 0 ? "CIENTO " + Decenas(resto) : "CIEN ";
+                return ["", "CIENTO ", "DOSCIENTOS ", "TRESCIENTOS ", "CUATROCIENTOS ", "QUINIENTOS ", "SEISCIENTOS ", "SETECIENTOS ", "OCHOCIENTOS ", "NOVECIENTOS "][cen] + Decenas(resto);
+            };
+
+            const pesos = Math.floor(amount);
+            const centavos = Math.round((amount - pesos) * 100);
+            let letras = "";
+
+            if (pesos === 0) letras = "CERO ";
+            else if (pesos < 100) letras = Decenas(pesos);
+            else if (pesos < 1000) letras = Centenas(pesos);
+            else if (pesos < 2000) letras = "MIL " + Centenas(pesos % 1000);
+            else if (pesos < 1000000) letras = Centenas(Math.floor(pesos / 1000)) + " MIL " + Centenas(pesos % 1000);
+
+            return `${letras.trim()} PESOS ${centavos.toString().padStart(2, '0')}/100 M.N.`;
+        };
 
             // --- LOGICA VENTA DIRECTA (MOSTRADOR) ---
             const abrirVentaDirecta = () => {
@@ -843,144 +864,215 @@
                 playSound('success');
             };
 
-            // --- REPORTES Y TICKETS (LOGICA ACTUALIZADA) ---
+            // --- REPORTES Y TICKETS (LÓGICA ACTUALIZADA FISCAL) ---
             const generarTicket = (venta, formato = '58mm') => {
                 if (!window.jspdf) return alert("Error PDF");
                 try {
                     const { jsPDF } = window.jspdf;
                     
+                    // Cálculos Fiscales (Desglosar IVA del Total)
+                    // Total = Base * 1.16  =>  Base = Total / 1.16
+                    const total = venta.total;
+                    const subtotalBase = total / 1.16;
+                    const iva = total - subtotalBase;
+                    const totalLetras = numeroALetras(total);
+
+                    // Formato de Fecha dd-mm-aaaa
+                    const dateObj = new Date(venta.fecha);
+                    const dia = String(dateObj.getDate()).padStart(2, '0');
+                    const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const anio = dateObj.getFullYear();
+                    const fechaFormat = `${dia}-${mes}-${anio}`;
+                    const horaFormat = dateObj.toLocaleTimeString();
+
+                    // Folio Simulado UT-XXX (Usando los últimos digitos del ID para simular secuencia)
+                    const folioFiscal = `UT-${String(venta.id).slice(-4)}`;
+
                     if (formato === 'LETTER') {
-                        // --- FORMATO CARTA ---
+                        // --- FORMATO CARTA (Formal) ---
                         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
                         
-                        doc.setFontSize(20);
+                        // Encabezado Fiscal
+                        doc.setFontSize(14);
                         doc.setFont("helvetica", "bold");
                         doc.text(EMPRESA, 105, 20, { align: 'center' });
-                        doc.setFontSize(12);
-                        doc.setFont("helvetica", "normal");
-                        doc.text("Recibo de Venta", 105, 28, { align: 'center' });
                         
                         doc.setFontSize(10);
-                        doc.text(`Folio: ${venta.id}`, 20, 40);
-                        doc.text(`Fecha: ${new Date().toLocaleString()}`, 20, 46);
-                        doc.text(`Cliente: ${venta.cliente}`, 20, 52);
-                        doc.text(`Atendió: ${venta.atendio || 'Sistema'}`, 140, 40);
-                        doc.text(`Estación: ${venta.equipo}`, 140, 46);
+                        doc.setFont("helvetica", "normal");
+                        doc.text(`RFC: ${RFC}`, 105, 26, { align: 'center' });
+                        doc.text(REGIMEN, 105, 31, { align: 'center' });
+                        doc.text(`Lugar de expedición: ${DIRECCION}`, 105, 36, { align: 'center' });
+
+                        // Datos de la Operación
+                        doc.setDrawColor(200);
+                        doc.line(10, 42, 206, 42);
+                        
+                        doc.setFont("helvetica", "bold");
+                        doc.text(`Folio: ${folioFiscal}`, 20, 50);
+                        doc.setFont("helvetica", "normal");
+                        doc.text(`Fecha de expedición: ${fechaFormat} ${horaFormat}`, 120, 50);
+                        doc.text(`Cliente: ${venta.cliente}`, 20, 56);
 
                         // Tabla de Productos
                         const tableData = [];
-                        if(venta.subtotalRenta > 0) tableData.push(['1', 'Renta de Equipo', `$${venta.subtotalRenta.toFixed(2)}`, `$${venta.subtotalRenta.toFixed(2)}`]);
+                        
+                        // Agregar Renta si existe
+                        if(venta.subtotalRenta > 0) {
+                            tableData.push([
+                                '1', 
+                                'Renta de Equipo de Cómputo/Consola', 
+                                `$${venta.subtotalRenta.toFixed(2)}`, 
+                                `$${venta.subtotalRenta.toFixed(2)}`
+                            ]);
+                        }
+                        
+                        // Agregar Productos
                         venta.productos.forEach(p => {
-                            tableData.push([p.cantidad || 1, p.nombre, `$${p.precio.toFixed(2)}`, `$${((p.cantidad||1)*p.precio).toFixed(2)}`]);
+                            const cantidad = p.cantidad || 1;
+                            const importe = cantidad * p.precio;
+                            tableData.push([
+                                cantidad, 
+                                p.nombre, 
+                                `$${p.precio.toFixed(2)}`, 
+                                `$${importe.toFixed(2)}`
+                            ]);
                         });
 
                         doc.autoTable({
-                            startY: 60,
-                            head: [['Cant.', 'Descripción', 'P. Unit.', 'Importe']],
+                            startY: 65,
+                            head: [['Cant.', 'Desc.', 'P.Unit', 'Imp.']],
                             body: tableData,
-                            theme: 'grid',
-                            headStyles: { fillColor: [60, 60, 60] }
+                            theme: 'plain',
+                            styles: { fontSize: 10, cellPadding: 2 },
+                            headStyles: { fillColor: [240, 240, 240], textColor: 20, fontStyle: 'bold', halign: 'center' },
+                            columnStyles: {
+                                0: { halign: 'center' }, // Cant
+                                2: { halign: 'right' },  // Unit
+                                3: { halign: 'right' }   // Importe
+                            }
                         });
 
                         const finalY = doc.lastAutoTable.finalY + 10;
-                        doc.setFontSize(14);
+
+                        // Totales y Desglose
+                        doc.setFontSize(10);
+                        // Total con letra
+                        doc.text(`IMPORTE CON LETRA:`, 20, finalY);
                         doc.setFont("helvetica", "bold");
-                        doc.text(`TOTAL: $${venta.total.toFixed(2)}`, 190, finalY, { align: 'right' });
-                        
-                        if(venta.pagoCon) {
-                            doc.setFontSize(10);
-                            doc.setFont("helvetica", "normal");
-                            doc.text(`Pago Con: $${parseFloat(venta.pagoCon).toFixed(2)}`, 190, finalY + 6, { align: 'right' });
-                            doc.text(`Cambio: $${parseFloat(venta.cambio).toFixed(2)}`, 190, finalY + 12, { align: 'right' });
-                        }
+                        doc.text(totalLetras, 20, finalY + 5);
 
-                        if(venta.puntosGanados > 0) {
-                            doc.setFontSize(12);
-                            doc.setTextColor(0, 100, 0);
-                            doc.text(`+ ${venta.puntosGanados} Puntos Ganados`, 20, finalY + 10);
-                        }
+                        // Desglose Numérico (Alineado a la derecha)
+                        const xValores = 190;
+                        const xEtiquetas = 150;
 
-                        doc.save(`Ticket_Carta_${venta.id}.pdf`);
+                        doc.setFont("helvetica", "normal");
+                        doc.text("Subtotal:", xEtiquetas, finalY, { align: 'right' });
+                        doc.text(`$${subtotalBase.toFixed(2)}`, xValores, finalY, { align: 'right' });
+
+                        doc.text("IVA (16%):", xEtiquetas, finalY + 6, { align: 'right' });
+                        doc.text(`$${iva.toFixed(2)}`, xValores, finalY + 6, { align: 'right' });
+
+                        doc.setFontSize(12);
+                        doc.setFont("helvetica", "bold");
+                        doc.text("TOTAL:", xEtiquetas, finalY + 14, { align: 'right' });
+                        doc.text(`$${total.toFixed(2)}`, xValores, finalY + 14, { align: 'right' });
+
+                        // Pie de página
+                        doc.setFontSize(8);
+                        doc.setFont("helvetica", "italic");
+                        doc.text("Este documento es una representación impresa de una venta.", 105, 260, { align: 'center' });
+
+                        doc.save(`Factura_${folioFiscal}.pdf`);
 
                     } else {
                         // --- FORMATO 58MM (TÉRMICO) ---
-                        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [58, 160 + (venta.productos.length * 10)] });
+                        // Calculamos largo dinámico
+                        const linesHeight = 120 + (venta.productos.length * 10);
+                        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [58, linesHeight] });
                         
                         let y = 5;
+                        const centerX = 29;
+                        const margin = 2;
+                        const rightX = 56;
+
+                        // Encabezado
                         doc.setFont("helvetica", "bold"); 
-                        doc.setFontSize(12);
-                        doc.text(EMPRESA, 29, y, { align: 'center' }); y+=5;
-                        
-                        doc.setFontSize(10); 
-                        doc.text("Ciber Centro Progreso", 29, y, { align: 'center' }); y+=6; 
+                        doc.setFontSize(9);
+                        doc.text(EMPRESA, centerX, y, { align: 'center', maxWidth: 54 }); 
+                        // Ajuste manual de salto de línea si el nombre es largo
+                        y += (doc.getTextDimensions(EMPRESA).h) + 3;
 
-                        doc.setFontSize(8);
                         doc.setFont("helvetica", "normal");
-                        doc.text(`Folio: ${venta.id.toString().slice(-6)}`, 2, y); y+=4;
-                        doc.text(new Date().toLocaleString(), 2, y); y+=4;
-                        doc.text(`Atendió: ${venta.atendio || 'Sistema'}`, 2, y); y+=4;
+                        doc.setFontSize(7);
+                        doc.text(`RFC: ${RFC}`, centerX, y, { align: 'center' }); y+=4;
+                        doc.text(REGIMEN, centerX, y, { align: 'center', maxWidth: 54 }); 
+                        y += (doc.getTextDimensions(REGIMEN).h) + 1; // Salto dinámico
                         
+                        doc.text(DIRECCION, centerX, y, { align: 'center', maxWidth: 54 });
+                        y += (doc.getTextDimensions(DIRECCION).h) + 3;
+
+                        doc.text("-".repeat(40), margin, y); y+=4;
+                        
+                        // Datos Ticket
+                        doc.text(`Folio: ${folioFiscal}`, margin, y); y+=4;
+                        doc.text(`Fecha: ${fechaFormat} ${horaFormat}`, margin, y); y+=4;
+                        doc.text(`Cliente: ${venta.cliente.substring(0,25)}`, margin, y); y+=5;
+
+                        // Encabezados Tabla
                         doc.setFont("helvetica", "bold");
-                        doc.text(`Cliente: ${venta.cliente}`, 2, y); y+=4;
-                        
+                        doc.text("Cant  Desc           Importe", margin, y); y+=4;
                         doc.setFont("helvetica", "normal");
-                        doc.text(`Uso: ${venta.equipo}`, 2, y); y+=5; 
-                        
-                        doc.text("-".repeat(32), 2, y); y+=5;
+                        doc.text("-".repeat(40), margin, y); y+=4;
 
+                        // Items
+                        // Renta
                         if(venta.subtotalRenta > 0) {
-                            doc.setFont("helvetica", "bold");
-                            doc.text(`Renta Equipo`, 2, y); 
-                            doc.text(`$${venta.subtotalRenta.toFixed(2)}`, 56, y, { align: 'right' }); 
-                            y+=6; 
+                            doc.text(`1   Renta Equipo`, margin, y); 
+                            doc.text(`$${venta.subtotalRenta.toFixed(2)}`, rightX, y, { align: 'right' });
+                            y+=4;
                         }
 
-                        doc.setFont("helvetica", "bold");
+                        // Productos
                         venta.productos.forEach(p => {
                             const qty = p.cantidad || 1;
-                            const nombre = qty > 1 ? `${qty}x ${p.nombre.substring(0,16)}` : `1x ${p.nombre.substring(0,18)}`;
-                            doc.text(nombre, 2, y);
-                            doc.text(`$${(p.precio * qty).toFixed(2)}`, 56, y, { align: 'right' }); 
-                            y+=7; 
+                            const importe = qty * p.precio;
+                            const nombre = p.nombre.substring(0, 18); // Truncar nombre
+                            
+                            doc.text(`${qty}   ${nombre}`, margin, y);
+                            doc.text(`$${importe.toFixed(2)}`, rightX, y, { align: 'right' });
+                            y+=4;
                         });
 
-                        doc.setFont("helvetica", "normal");
-                        y+=2; 
-                        doc.text("-".repeat(32), 2, y); y+=5;
-                        
-                        doc.setFontSize(11); 
+                        doc.text("-".repeat(40), margin, y); y+=4;
+
+                        // Desglose Totales
+                        doc.setFontSize(7);
+                        doc.text("Subtotal:", 35, y, { align: 'right' });
+                        doc.text(`$${subtotalBase.toFixed(2)}`, rightX, y, { align: 'right' }); y+=4;
+
+                        doc.text("IVA (16%):", 35, y, { align: 'right' });
+                        doc.text(`$${iva.toFixed(2)}`, rightX, y, { align: 'right' }); y+=5;
+
+                        doc.setFontSize(10);
                         doc.setFont("helvetica", "bold");
-                        doc.text(`TOTAL: $${venta.total.toFixed(2)}`, 56, y, { align: 'right' }); y+=7; 
-                        
-                        if (venta.pagoCon) {
-                            doc.setFontSize(8);
-                            doc.setFont("helvetica", "normal");
-                            doc.text(`Efectivo: $${venta.pagoCon.toFixed(2)}`, 56, y, { align: 'right' }); y+=4;
-                            doc.text(`Cambio: $${venta.cambio.toFixed(2)}`, 56, y, { align: 'right' }); y+=6;
-                        }
+                        doc.text("TOTAL:", 35, y, { align: 'right' });
+                        doc.text(`$${total.toFixed(2)}`, rightX, y, { align: 'right' }); y+=6;
 
-                        if(venta.puntosGanados > 0) { 
-                            doc.text("-".repeat(32), 2, y); y+=5;
-                            doc.setFontSize(9); 
-                            doc.setFont("helvetica", "bold");
-                            doc.text(`PUNTOS GANADOS: ${venta.puntosGanados}`, 29, y, { align: 'center' }); 
-                            y+=5;
-                            doc.setFont("helvetica", "italic");
-                            doc.setFontSize(8); 
-                            doc.text("¡Acumúlalos para premios!", 29, y, { align: 'center' }); 
-                            y+=5;
-                        }
-                        
-                        doc.setFontSize(8); 
+                        // Total en Letras
+                        doc.setFontSize(6);
                         doc.setFont("helvetica", "italic");
-                        doc.text("¡Gracias por su preferencia!", 29, y, { align: 'center' }); y+=5;
-                        doc.setFontSize(12);
-                        doc.setFont("helvetica", "normal");
-                        doc.text("=)", 29, y, { align: 'center' }); 
+                        // Dividir texto largo en líneas
+                        const splitTitle = doc.splitTextToSize(totalLetras, 54);
+                        doc.text(splitTitle, centerX, y, { align: 'center' });
+                        y += (splitTitle.length * 3) + 4;
 
-                        doc.save(`Ticket_58mm_${venta.id}.pdf`); 
+                        doc.setFontSize(7);
+                        doc.setFont("helvetica", "normal");
+                        doc.text("¡Gracias por su preferencia!", centerX, y, { align: 'center' });
+
+                        doc.save(`Ticket_${folioFiscal}.pdf`); 
                     }
-                } catch(e) { console.error(e); }
+                } catch(e) { console.error(e); alert("Error generando PDF"); }
             };
 
             const generarReporteCaja = (cajaInfo, ventasList) => {
@@ -1026,7 +1118,7 @@
                     
                     doc.setTextColor(0, 0, 0);
                     doc.setFontSize(14);
-                    doc.text("TOTAL EN CAJA:", 20, 82); 
+                    doc.text("TOTAL EN CAJA:", 20, 82); // CORREGIDO (Antes decía "CAJA TOTAL:")
                     doc.text(`$${totalCaja.toFixed(2)}`, 190, 82, { align: 'right' });
 
                     // Detalle de Ventas
@@ -1277,6 +1369,8 @@
                             </div>
                         </div>
                     )}
+
+                    {/* ... (RESTO DE MODALES EXISTENTES SIN CAMBIOS MAYORES) ... */}
 
                     {/* --- MODAL CONFIRMACION RESET --- */}
                     {confirmarResetId && (
@@ -1550,6 +1644,62 @@
                              </div>
                         </div>
                     )}
+
+                    {/* --- MODAL DE CONFIRMACIÓN DE RESET --- */}
+                    {confirmarResetId && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] fade-anim">
+                            <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full modal-anim text-center">
+                                <div className="mb-4 text-rose-600 flex justify-center"><AlertTriangle size={48}/></div>
+                                <h3 className="font-bold text-lg mb-2 text-slate-800">¿Reiniciar Estación?</h3>
+                                <p className="text-sm text-slate-500 mb-6">Se perderá el tiempo y el consumo actual sin cobrar. Esta acción no se puede deshacer.</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setConfirmarResetId(null)} className="flex-1 border py-2 rounded text-slate-600 font-bold hover:bg-slate-50">Cancelar</button>
+                                    <button onClick={ejecutarReset} className="flex-1 bg-rose-600 text-white py-2 rounded font-bold hover:bg-rose-700 shadow-lg">Sí, Reiniciar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- OTROS MODALES (PIN, INTERCAMBIO, PREPAGO, COBRO, RESPALDO, ETC) MANTENIDOS --- */}
+                    {modalAbierto === 'cambiar_pin' && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4 fade-anim">
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden modal-anim">
+                                <div className="bg-slate-800 p-4 text-white flex justify-between items-center"><h2 className="font-bold flex gap-2"><Key className="text-yellow-400"/> Seguridad</h2><button onClick={() => setModalAbierto(null)}><X/></button></div>
+                                <div className="p-6 space-y-4">
+                                    <p className="text-sm text-slate-500 mb-2">Cambiar contraseña para: <span className="font-bold text-slate-800">{usuarioActual.nombre}</span></p>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Nuevo PIN</label><input type="password" maxLength="4" className="w-full border-2 border-slate-200 rounded-lg p-2 text-center text-xl tracking-widest outline-none focus:border-indigo-500" value={pinData.nuevo} onChange={e => setPinData({...pinData, nuevo: e.target.value.replace(/\D/g,'')})} autoFocus /></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Confirmar PIN</label><input type="password" maxLength="4" className="w-full border-2 border-slate-200 rounded-lg p-2 text-center text-xl tracking-widest outline-none focus:border-indigo-500" value={pinData.confirmar} onChange={e => setPinData({...pinData, confirmar: e.target.value.replace(/\D/g,'')})} /></div>
+                                    <button onClick={actualizarPin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold shadow-lg mt-4 flex justify-center items-center gap-2"><Save size={18}/> Guardar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {modalAbierto === 'intercambio' && eqSel && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 fade-anim">
+                             <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md modal-anim">
+                                <h2 className="font-bold mb-2 flex items-center gap-2 text-slate-700"><ArrowRightLeft/> Mover {eqSel.nombre}</h2>
+                                <p className="text-sm text-slate-500 mb-4">Selecciona destino:</p>
+                                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">{equipos.filter(e => e.estado === 'libre' && e.id !== eqSel.id).map(e => (<button key={e.id} onClick={() => confirmarIntercambio(e.id)} className="border p-3 rounded hover:bg-indigo-50 font-bold text-left flex items-center gap-2">{e.tipo === 'PC' ? <Monitor size={16}/> : <Gamepad2 size={16}/>} {e.nombre}</button>))}</div>
+                                <button onClick={() => setModalAbierto(null)} className="mt-4 w-full border py-2 rounded text-slate-500 hover:bg-slate-100">Cancelar</button>
+                             </div>
+                        </div>
+                    )}
+
+                    {modalAbierto === 'prepago' && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 fade-anim">
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden modal-anim">
+                                <div className="bg-indigo-600 p-4 text-white flex justify-between items-center"><h2 className="font-bold flex gap-2"><Timer/> Prepago</h2><button onClick={() => setModalAbierto(null)}><X/></button></div>
+                                <div className="p-6 space-y-4">
+                                    <div className="text-center text-sm text-slate-500 mb-4">Configurando: <span className="font-bold text-slate-800">{eqSel.nombre}</span><br/>Tarifa: ${eqSel.precioHora}/hr</div>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Por Dinero ($)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span><input type="number" className="w-full border-2 border-slate-200 rounded-lg p-2 pl-8 focus:border-indigo-500 outline-none font-bold text-lg" placeholder="0.00" value={prepagoData.dinero} onChange={e => setPrepagoData({ dinero: e.target.value, minutos: '' })} autoFocus /></div>{prepagoData.dinero && <p className="text-right text-xs text-emerald-600 font-bold mt-1">= {((parseFloat(prepagoData.dinero) / eqSel.precioHora) * 60).toFixed(0)} min</p>}</div>
+                                    <div className="flex items-center gap-2"><div className="h-px bg-slate-200 flex-1"></div><span className="text-xs text-slate-400">O BIEN</span><div className="h-px bg-slate-200 flex-1"></div></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Por Tiempo (Minutos)</label><input type="number" className="w-full border-2 border-slate-200 rounded-lg p-2 focus:border-indigo-500 outline-none text-center" placeholder="Ej. 30" value={prepagoData.minutos} onChange={e => setPrepagoData({ minutos: e.target.value, dinero: '' })} /></div>
+                                    <button onClick={aplicarPrepago} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold shadow-lg mt-4 flex justify-center items-center gap-2"><Play size={18}/> Iniciar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
                     {modalAbierto === 'cobrar' && eqSel && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 fade-anim">
@@ -1629,45 +1779,6 @@
                         </div>
                     )}
 
-                    {modalAbierto === 'cambiar_pin' && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4 fade-anim">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden modal-anim">
-                                <div className="bg-slate-800 p-4 text-white flex justify-between items-center"><h2 className="font-bold flex gap-2"><Key className="text-yellow-400"/> Seguridad</h2><button onClick={() => setModalAbierto(null)}><X/></button></div>
-                                <div className="p-6 space-y-4">
-                                    <p className="text-sm text-slate-500 mb-2">Cambiar contraseña para: <span className="font-bold text-slate-800">{usuarioActual.nombre}</span></p>
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Nuevo PIN</label><input type="password" maxLength="4" className="w-full border-2 border-slate-200 rounded-lg p-2 text-center text-xl tracking-widest outline-none focus:border-indigo-500" value={pinData.nuevo} onChange={e => setPinData({...pinData, nuevo: e.target.value.replace(/\D/g,'')})} autoFocus /></div>
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Confirmar PIN</label><input type="password" maxLength="4" className="w-full border-2 border-slate-200 rounded-lg p-2 text-center text-xl tracking-widest outline-none focus:border-indigo-500" value={pinData.confirmar} onChange={e => setPinData({...pinData, confirmar: e.target.value.replace(/\D/g,'')})} /></div>
-                                    <button onClick={actualizarPin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold shadow-lg mt-4 flex justify-center items-center gap-2"><Save size={18}/> Guardar</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {modalAbierto === 'intercambio' && eqSel && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 fade-anim">
-                             <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md modal-anim">
-                                <h2 className="font-bold mb-2 flex items-center gap-2 text-slate-700"><ArrowRightLeft/> Mover {eqSel.nombre}</h2>
-                                <p className="text-sm text-slate-500 mb-4">Selecciona destino:</p>
-                                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">{equipos.filter(e => e.estado === 'libre' && e.id !== eqSel.id).map(e => (<button key={e.id} onClick={() => confirmarIntercambio(e.id)} className="border p-3 rounded hover:bg-indigo-50 font-bold text-left flex items-center gap-2">{e.tipo === 'PC' ? <Monitor size={16}/> : <Gamepad2 size={16}/>} {e.nombre}</button>))}</div>
-                                <button onClick={() => setModalAbierto(null)} className="mt-4 w-full border py-2 rounded text-slate-500 hover:bg-slate-100">Cancelar</button>
-                             </div>
-                        </div>
-                    )}
-
-                    {modalAbierto === 'prepago' && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 fade-anim">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden modal-anim">
-                                <div className="bg-indigo-600 p-4 text-white flex justify-between items-center"><h2 className="font-bold flex gap-2"><Timer/> Prepago</h2><button onClick={() => setModalAbierto(null)}><X/></button></div>
-                                <div className="p-6 space-y-4">
-                                    <div className="text-center text-sm text-slate-500 mb-4">Configurando: <span className="font-bold text-slate-800">{eqSel.nombre}</span><br/>Tarifa: ${eqSel.precioHora}/hr</div>
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Por Dinero ($)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span><input type="number" className="w-full border-2 border-slate-200 rounded-lg p-2 pl-8 focus:border-indigo-500 outline-none font-bold text-lg" placeholder="0.00" value={prepagoData.dinero} onChange={e => setPrepagoData({ dinero: e.target.value, minutos: '' })} autoFocus /></div>{prepagoData.dinero && <p className="text-right text-xs text-emerald-600 font-bold mt-1">= {((parseFloat(prepagoData.dinero) / eqSel.precioHora) * 60).toFixed(0)} min</p>}</div>
-                                    <div className="flex items-center gap-2"><div className="h-px bg-slate-200 flex-1"></div><span className="text-xs text-slate-400">O BIEN</span><div className="h-px bg-slate-200 flex-1"></div></div>
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">Por Tiempo (Minutos)</label><input type="number" className="w-full border-2 border-slate-200 rounded-lg p-2 focus:border-indigo-500 outline-none text-center" placeholder="Ej. 30" value={prepagoData.minutos} onChange={e => setPrepagoData({ minutos: e.target.value, dinero: '' })} /></div>
-                                    <button onClick={aplicarPrepago} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold shadow-lg mt-4 flex justify-center items-center gap-2"><Play size={18}/> Iniciar</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         }
